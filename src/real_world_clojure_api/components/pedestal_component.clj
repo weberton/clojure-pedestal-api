@@ -1,17 +1,24 @@
 (ns real-world-clojure-api.components.pedestal-component
-  (:require [com.stuartsierra.component :as component]
+  (:require [cheshire.core :as json]
+            [com.stuartsierra.component :as component]
             [io.pedestal.http :as http]
+            [io.pedestal.http.content-negotiation :as content-negotiation]
             [io.pedestal.http.route :as route]
             [io.pedestal.interceptor :as interceptor]))
 
 
 (defn response
-  [status body]
-  {:status  status
-   :body    body
-   :headers nil})
+  ([status]
+   (response status nil))
+  ([status body]
+   (merge
+     {:status  status
+      :headers {"Content-Type" "application/json"}}
+     (when body {:body body}))))
 
 (def ok (partial response 200))
+
+(def not-found (partial response 404))
 
 (defn respond-hello [request]
   {:status 200 :body "Hello, world!"})
@@ -30,7 +37,9 @@
    (fn [{:keys [dependencies] :as context}]
      (println "get-todo-handler" (keys context))
      (let [request (:request context)
-           response (ok (get-todo-by-id dependencies (-> request :path-params :todo-id (parse-uuid))))]
+           todo (get-todo-by-id dependencies (-> request :path-params :todo-id))
+           response (if todo (ok (json/encode todo))
+                             (not-found))]
        (assoc context :response response)))})
 
 (comment
@@ -57,6 +66,10 @@
     {:name  ::inject-dependencies
      :enter (fn [context]
               (assoc context :dependencies dependencies))}))
+
+(def supported-types ["application/json"])
+
+(def content-negotiation-interceptor (content-negotiation/negotiate-content supported-types))
 
 (defn create-server
   [config]
@@ -85,7 +98,9 @@
                                         :server
                                         :port)}
                      (http/default-interceptors)
-                     (update ::http/interceptors concat [(inject-dependencies component)])
+                     (update ::http/interceptors concat [
+                                                         (inject-dependencies component)
+                                                         content-negotiation-interceptor])
                      (http/create-server)
                      (http/start))]
       (assoc component :server server)))

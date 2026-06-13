@@ -35,31 +35,45 @@
                (is (= {:body   "Hello, world!"
                        :status 200}
                       (-> (sut->url sut (url-for  :greet))
-                          (client/get)
+                          (client/get {:accept :json})
+                          (select-keys [:body :status]))))
+
+               (is (= 1 1))))
+
+(deftest content-negotiation-test
+  ;sut - system under test
+  (with-system [sut (core/real-world-clojure-api-system {:server {:port (get-free-port)}})]
+               (is (= {:body   "Not Acceptable"
+                       :status 406}
+                      (-> (sut->url sut (url-for  :greet))
+                          (client/get {:accept :edn
+                                       :throw-exceptions false})
                           (select-keys [:body :status]))))
 
                (is (= 1 1))))
 
 (deftest get-todo-test
-  (let [todo-id-1 (random-uuid)
-        todo-1 {:id    todo-id-1
+  (let [todo-id-1 (str (random-uuid))
+        todo-1 {:id todo-id-1
                 :name  "My todo for test"
                 :items [{
-                         :id   (random-uuid)
+                         :id   (str(random-uuid))
                          :name "finish the test"
                          }]}]
     (with-system [sut (core/real-world-clojure-api-system {:server {:port (get-free-port)}})]
                  (reset! (-> sut :in-memory-state-component :state-atom) [todo-1])
-                 (is (= {:body   (pr-str todo-1)
+                 (is (= {:body   todo-1
                          :status 200}
                         (-> (sut->url sut (url-for :get-todo {:path-params {:todo-id todo-id-1}}))
-                            (client/get)
+                            (client/get {:accept :json
+                                         :as :json
+                                         :throw-exceptions false})
                             (select-keys [:body :status]))))
                  (testing "Empty body is returned form random id"
                    (is (= {:body   ""
-                           :status 200}
-                          (-> (sut->url sut (url-for :get-todo {:path-params {:todo-id (random-uuid)}}))
-                              (client/get)
+                           :status 404}
+                          (-> (sut->url sut (url-for :get-todo {:path-params {:todo-id (str(random-uuid))}}))
+                              (client/get {:throw-exceptions false})
                               (select-keys [:body :status])))))
 
                  (is (= 1 1)))))

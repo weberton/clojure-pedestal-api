@@ -11,7 +11,8 @@
                  [org.slf4j/slf4j-simple "2.0.16"]
                  [com.stuartsierra/component "1.2.0"]
                  [com.stuartsierra/component.repl "1.0.0"]
-                 [clj-http "3.13.1"]]
+                 [clj-http "3.13.1"]
+                 [cheshire "6.2.0"]]
   :plugins [[lein-eftest "0.6.0"]]
   :eftest {:multithread? false}
   :main ^:skip-aot real-world-clojure-api.core
