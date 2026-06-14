@@ -4,7 +4,10 @@
             [io.pedestal.http :as http]
             [io.pedestal.http.content-negotiation :as content-negotiation]
             [io.pedestal.http.route :as route]
-            [io.pedestal.interceptor :as interceptor]))
+            [io.pedestal.interceptor :as interceptor]
+            [io.pedestal.http.body-params :as body-params]
+            [schema.core :as s
+             :include-macros true]))
 
 
 (defn response
@@ -14,15 +17,21 @@
    (merge
      {:status  status
       :headers {"Content-Type" "application/json"}}
-     (when body {:body body}))))
+     (when body {:body  (json/encode body)}))))
 
 (def ok (partial response 200))
 
 (def not-found (partial response 404))
 
+(def created (partial response 201))
+
 (defn respond-hello [request]
   {:status 200 :body "Hello, world!"})
 
+
+(defn save-todo!
+  [{:keys [in-memory-state-component]} todo]
+  (swap! (:state-atom in-memory-state-component) conj todo))
 
 (defn get-todo-by-id
   [{:keys [in-memory-state-component]} todo-id]
@@ -31,16 +40,38 @@
                  (= todo-id (:id todo))))
        (first)))
 
+(s/defschema
+  TodoItem
+  {:id s/Str
+   :name s/Str
+   :status s/Str})
+
+(s/defschema
+  Todo
+  {:id s/Str
+   :name s/Str
+   :items [TodoItem]})
+
 (def get-todo-handler
   {:name :echo
    :enter
    (fn [{:keys [dependencies] :as context}]
-     (println "get-todo-handler" (keys context))
+     (println "post-todo-handler" (keys context))
      (let [request (:request context)
            todo (get-todo-by-id dependencies (-> request :path-params :todo-id))
-           response (if todo (ok (json/encode todo))
+           response (if todo (ok todo)
                              (not-found))]
        (assoc context :response response)))})
+
+(def post-todo-handler
+  {:name :post-todo-handler
+   :enter
+   (fn [{:keys [dependencies] :as context}]
+     (println "get-todo-handler" (keys context))
+     (let [request (:request context)
+           todo (s/validate Todo (:json-params request))]
+       (save-todo! dependencies todo)
+       (assoc context :response (created todo))))})
 
 (comment
   [{:id    (random-uuid)
@@ -56,7 +87,8 @@
 (def routes
   (route/expand-routes
     #{["/greet" :get respond-hello :route-name :greet]
-      ["/todo/:todo-id" :get get-todo-handler :route-name :get-todo]}))
+      ["/todo/:todo-id" :get get-todo-handler :route-name :get-todo]
+      ["/todo" :post [(body-params/body-params) post-todo-handler] :route-name :post-todo]}))
 
 (def url-for (route/url-for-routes routes))
 
